@@ -1,0 +1,130 @@
+apply plugin: 'java'
+apply plugin: 'cpp'
+apply plugin: 'maven'
+apply plugin: 'eclipse'
+
+repositories {
+    maven {
+        url 'https://github.com/Boukefalos/jlibloader/raw/mvn-repo/'
+    }
+    mavenCentral()
+}
+
+dependencies {
+    compile 'com.github.boukefalos:jlibloader:0.2'
+    compile 'org.slf4j:slf4j-api:1.7.8'
+    testCompile 'junit:junit:4.8.2'
+}
+
+group = 'com.github.boukefalos'
+project.archivesBaseName = 'jlibsox'
+version = '0.1'
+def jniVersion = '14.4.1'
+
+task wrapper(type: Wrapper) {
+    gradleVersion = '1.12'
+}
+
+model {
+    platforms {
+        windows_i386 {
+            architecture 'i386'
+            operatingSystem 'windows'
+        }
+        windows_amd64 {
+            architecture 'amd64'
+            operatingSystem 'windows'
+        }
+    }
+    toolChains {
+        gcc(Gcc) {
+            addPlatformConfiguration(new TargetPlatformConfiguration() {
+                boolean supportsPlatform(Platform platform) {
+                    platform.operatingSystem.current && platform.operatingSystem.name == 'windows' &&
+                            platform.architecture.name == 'amd64'
+                }
+                List<String> getCppCompilerArgs() { ['-m64', '-fpermissive'] }
+                List<String> getCCompilerArgs() { ['-m64'] }
+                List<String> getObjectiveCCompilerArgs() { ['-m64'] }
+                List<String> getObjectiveCppCompilerArgs() { ['-m64'] }
+                List<String> getAssemblerArgs() { ['--64'] }
+                List<String> getLinkerArgs() { ['-m64'] }
+                List<String> getStaticLibraryArchiverArgs() { [] }
+            })
+        }
+    }
+}
+
+libraries {
+    main {
+        baseName project.archivesBaseName
+    }
+}
+
+tasks.withType(Upload) {
+    repositories {
+        mavenDeployer {
+            repository(url: uri('.maven'))
+        }
+    }
+}
+
+configurations {
+    jni
+}
+
+def deployer = uploadJni.repositories.mavenDeployer
+
+binaries.withType(SharedLibraryBinary) { binary ->
+    if (!buildable) {
+        return
+    }
+    def variantName = "${targetPlatform.operatingSystem.name}-${targetPlatform.architecture.name}"
+    def taskName = "jar-${variantName}"
+    def nativeJar = project.tasks.findByName(taskName)
+    if (nativeJar == null) {
+        nativeJar = project.task(taskName, type: Jar) {
+            baseName = "${project.archivesBaseName}-$variantName"
+        }
+        artifacts {
+            jni nativeJar
+        }
+        def jniPom = deployer.addFilter(variantName) { artifact, file ->
+            return file == nativeJar.archivePath
+        }
+        jniPom.groupId = project.group
+        jniPom.artifactId = nativeJar.baseName
+        jniPom.version = jniVersion
+        jniPom.scopeMappings.mappings.clear()
+    }
+    def builderTask = binary.tasks.builder
+    def libraryDirectory = project.group.replace('.', '/') + "/${project.archivesBaseName}/${variantName}" 
+    nativeJar.into(libraryDirectory) {
+        from builderTask.outputFile
+        from file("bin/sox.exe")
+    }
+}
+
+def mainPom = uploadArchives.repositories.mavenDeployer.pom
+mainPom.groupId = project.group
+mainPom.artifactId = jar.baseName
+mainPom.version = project.version
+mainPom.scopeMappings.mappings.clear()
+mainPom.withXml { provider ->
+    def node = provider.asNode()
+    def deps = node.appendNode('dependencies')
+    ['windows-amd64', 'windows-i386'].each { platform ->
+        def dep = deps.appendNode('dependency')
+        dep.appendNode('groupId', project.group)
+        dep.appendNode('artifactId', "${project.archivesBaseName}-${platform}")
+        dep.appendNode('version', jniVersion)
+    }
+    def dep = deps.appendNode('dependency')
+    dep.appendNode('groupId', 'com.github.boukefalos')
+    dep.appendNode('artifactId', 'jlibloader')
+    dep.appendNode('version', '0.2')
+}
+
+jar {
+    from sourceSets.main.allSource
+}
