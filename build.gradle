@@ -11,14 +11,14 @@ repositories {
 }
 
 dependencies {
-    compile 'com.github.boukefalos:jlibloader:0.2'
+    compile 'com.github.boukefalos:jlibloader:0.3'
     compile 'org.slf4j:slf4j-api:1.7.8'
     testCompile 'junit:junit:4.8.2'
 }
 
 group = 'com.github.boukefalos'
 project.archivesBaseName = 'jlibsox'
-version = '0.1'
+version = '0.2'
 def jniVersion = '14.4.1'
 
 task wrapper(type: Wrapper) {
@@ -122,7 +122,7 @@ mainPom.withXml { provider ->
     def dep = deps.appendNode('dependency')
     dep.appendNode('groupId', 'com.github.boukefalos')
     dep.appendNode('artifactId', 'jlibloader')
-    dep.appendNode('version', '0.2')
+    dep.appendNode('version', '0.3')
 }
 
 jar {
